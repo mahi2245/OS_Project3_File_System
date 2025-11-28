@@ -25,7 +25,7 @@ run: $(EXEC)
 	$(EXEC)
 
 clean:
-	rm $(OBJ)/*.o $(EXEC)
+	rm -f $(OBJ)/*.o $(EXEC)
 
 $(shell mkdir -p $(DIRS))
 

@@ -15,13 +15,13 @@ int main(int argc, char *argv[]) {
 
     // open the FAT32 image
     if (fat32_mount(argv[1]) != 0) {
-        fprint(stderr, "Error: failed to open FAT32 image.\n");
-        return 1
+        fprintf(stderr, "Error: failed to open FAT32 image.\n");
+        return 1;
     }
 
     while (1) {
         // print initial prompt
-        printf("%s/> ", fat32_get_image_name());
+        printf("%s/> ", get_image_name());
 
         // get user input
         char *input = get_input();
@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
 
         tokenlist *tokens = get_tokens(input);
 
-        if (token->size == 0) {
+        if (tokens->size == 0) {
             free(input);
             free_tokens(tokens);
             continue;
@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) {
 
         else if (strcmp(cmd, "info") == 0) {
             // call function to implement info
-            printf("you have called the info command")
+            printf("you have called the info command\n");
         }
 
         else {
