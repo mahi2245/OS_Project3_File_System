@@ -48,8 +48,7 @@ int main(int argc, char *argv[]) {
         }
 
         else if (strcmp(cmd, "info") == 0) {
-            // call function to implement info
-            printf("you have called the info command\n");
+            info();
         }
 
         else {
