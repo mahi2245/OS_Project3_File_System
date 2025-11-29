@@ -51,6 +51,10 @@ int main(int argc, char *argv[]) {
             info();
         }
 
+        else if (strcmp(cmd, "ls") == 0) {
+            ls();
+        }
+
         else {
             printf("Error: not a valid command\n");
         }

@@ -8,7 +8,33 @@ static FILE *fp = NULL;
 static char *fp_name = NULL;
 static BPB bpb;
 static long image_size = 0;
+static unsigned int current_cluster = 0;
 
+// ========================= HELPER FUNCTIONS =========================
+unsigned int cluster_size() {
+    return bpb.BPB_BytsPerSec * bpb.BPB_SecPerClus;
+}
+
+unsigned int first_data_sector() {
+    return bpb.BPB_RsvdSecCnt + (bpb.BPB_NumFATs * bpb.BPB_FATSz32);
+}
+
+unsigned int cluster_to_sector(unsigned int cluster) {
+    return first_data_sector() + (cluster - 2) * bpb.BPB_SecPerClus;
+}
+
+void read_cluster(unsigned int cluster, unsigned char *buffer) {
+    unsigned int sector = cluster_to_sector(cluster);
+    unsigned int clusterSize = cluster_size();
+
+    unsigned int offset = sector * bpb.BPB_BytsPerSec;
+
+    fseek(fp, offset, SEEK_SET);
+    fread(buffer, clusterSize, 1, fp);
+}
+
+
+// ========================= MAIN FUNCTIONS =========================
 // mount image
 int fat32_mount(const char *filename) {
     if((fp = fopen(filename, "rb")) == NULL) {
@@ -28,7 +54,9 @@ int fat32_mount(const char *filename) {
     fseek(fp, 0, SEEK_SET);
     fread(&bpb, sizeof(BPB), 1, fp);
 
-    fclose(fp);
+    // set current directory to root
+    current_cluster = bpb.BPB_RootClus;
+
     return 0;
 }
 
@@ -73,4 +101,38 @@ void info() {
     // size of image (in bytes)
     printf("Size of image (bytes): %ld\n", image_size);
 
+}
+
+// calls ls function
+void ls() {
+    unsigned int size = cluster_size();
+    unsigned char *buffer = malloc(size);
+    if (buffer == NULL) {
+        printf("Error: could not allocate memory for ls.\n");
+        return;
+    }
+
+    read_cluster(current_cluster, buffer);
+
+    DIR_ENTRY *entries = (DIR_ENTRY *)buffer;
+    int num = size / sizeof(DIR_ENTRY);
+
+    for (int i = 0; i < num; i++) {
+        if (entries[i].DIR_Name[0] == 0x00) { // entry is not being used
+            continue;
+        }
+        if (entries[i].DIR_Attr == 0x0F) { // long filename entry
+            continue;
+        }
+        if (entries[i].DIR_Name[0] == 0xE5) { // deleted entry
+            continue;
+        }
+
+        char name[12];
+        memcpy(name, entries[i].DIR_Name, 11);
+        name[11] = '\0';
+        printf("%s\n", name);
+    }
+
+    free(buffer);
 }

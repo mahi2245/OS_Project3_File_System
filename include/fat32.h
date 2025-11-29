@@ -3,11 +3,18 @@
 
 #include <stdio.h>
 
+// helper functions
+unsigned int cluster_size();
+unsigned int first_data_sector();
+unsigned int cluster_to_sector(unsigned int cluster);
+void read_cluster(unsigned int cluster, unsigned char *buffer);
+
+
 int fat32_mount(const char *filename);
 void fat32_unmount();
-
 const char* get_image_name();
 void info();
+void ls();
 
 // FAT32 BPB structure
 #pragma pack(push, 1)
@@ -43,5 +50,21 @@ typedef struct __attribute__((packed)) {
     unsigned char  BS_FilSysType[8];
 } BPB;
 #pragma pack(pop)
+
+// FAT32 Directory Entry (short name version)
+typedef struct __attribute__((packed)) {
+    unsigned char  DIR_Name[11];
+    unsigned char  DIR_Attr;
+    unsigned char  DIR_NTRes;
+    unsigned char  DIR_CrtTimeTenth;
+    unsigned short DIR_CrtTime;
+    unsigned short DIR_CrtDate;
+    unsigned short DIR_LstAccDate;
+    unsigned short DIR_FstClusHI;
+    unsigned short DIR_WrtTime;
+    unsigned short DIR_WrtDate;
+    unsigned short DIR_FstClusLO;
+    unsigned int   DIR_FileSize;
+} DIR_ENTRY;
 
 #endif
