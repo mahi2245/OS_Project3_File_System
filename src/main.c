@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
 
     while (1) {
         // print initial prompt
-        printf("%s/> ", get_image_name());
+        printf("%s%s> ", get_image_name(), get_current_path());
 
         // get user input
         char *input = get_input();
@@ -54,6 +54,10 @@ int main(int argc, char *argv[]) {
 
         else if (strcmp(cmd, "ls") == 0) {
             ls();
+        }
+
+        else if (strcmp(cmd, "cd") == 0) {
+            cd(arg1);
         }
 
         else if (strcmp(cmd, "creat") == 0) {
