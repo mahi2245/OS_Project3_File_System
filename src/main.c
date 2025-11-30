@@ -39,6 +39,7 @@ int main(int argc, char *argv[]) {
         }
 
         char *cmd = tokens->items[0];
+        char *arg1 = tokens->items[1];
 
         // implement commands
         if (strcmp(cmd, "exit") == 0) {
@@ -53,6 +54,10 @@ int main(int argc, char *argv[]) {
 
         else if (strcmp(cmd, "ls") == 0) {
             ls();
+        }
+
+        else if (strcmp(cmd, "creat") == 0) {
+            creat(arg1);
         }
 
         else {
