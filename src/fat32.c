@@ -120,12 +120,13 @@ int fat32_mount(const char *filename) {
         return -1;
     }
 
-    fp_name = strdup(filename);
+    fp_name = malloc(strlen(filename) + 1);
     if (!fp_name) {
         fclose(fp);
         fp = NULL;
         return -1;
     }
+    strcpy(fp_name, filename);
 
     // read BPB
     fseek(fp, 0, SEEK_END);
@@ -257,6 +258,51 @@ void cd(char *name) {
     strcat(current_path, "/");
 }
 
+void mkdir(char * dirname) {
+    unsigned int size = cluster_size();
+    unsigned char *buffer = malloc(size);
+    if (buffer == NULL) {
+        printf("Error: could not allocate memory for ls.\n");
+        return;
+    }
+    read_cluster(current_cluster, buffer);
+    DIR_ENTRY *entries = (DIR_ENTRY *)buffer;
+
+    //create the short name
+    char short_dirname[11];
+    for (int i = 0; i < 11; i++) {
+        short_dirname[i] = ' ';
+    }
+    int i = 0;
+    // does this need length checking? maybe
+    while (dirname[i] != '\0') {
+        short_dirname[i] = toupper(dirname[i]);
+        i+=1;
+    }
+
+ int name_exists = 0;
+    int num = size / sizeof(DIR_ENTRY);
+    for (int i = 0; i < num; i++) {
+        if (entries[i].DIR_Name[0] == 0x00) { 
+            break;    
+        }
+        if (memcmp(short_dirname, entries[i].DIR_Name, 11) == 0) {  
+            printf("error, filename already exists here");
+            name_exists = 1;
+            break;
+        }
+    }
+    if (name_exists == 1) {
+        // do nothing
+    } 
+    else {
+
+
+    }
+
+
+
+}
 
 void creat(char * filename) {
     unsigned int size = cluster_size();
@@ -300,7 +346,7 @@ void creat(char * filename) {
         if (entries[i].DIR_Name[0] == 0x00) { 
             DIR_ENTRY *entry = &entries[i];
             memcpy(entry->DIR_Name, short_filename, 11);
-            entry->DIR_Attr = DIR_ARCHIVE;
+            entry->DIR_Attr = 0x20;
 
             entry->DIR_FstClusHI = 0;
             entry->DIR_FstClusLO = 0;
