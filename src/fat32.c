@@ -120,13 +120,12 @@ int fat32_mount(const char *filename) {
         return -1;
     }
 
-    fp_name = malloc(strlen(filename) + 1);
+    fp_name = strdup(filename);
     if (!fp_name) {
         fclose(fp);
         fp = NULL;
         return -1;
     }
-    strcpy(fp_name, filename);
 
     // read BPB
     fseek(fp, 0, SEEK_END);
