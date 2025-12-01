@@ -1,8 +1,6 @@
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-
 #include "fat32.h"
 
 static FILE *fp = NULL;
@@ -11,6 +9,8 @@ static BPB bpb;
 static long image_size = 0;
 static unsigned int current_cluster = 0;
 static char current_path[256] = "/";
+
+static unsigned int fat_start_off = 0;
 
 // ========================= HELPER FUNCTIONS =========================
 const char* get_image_name() {
@@ -36,7 +36,6 @@ unsigned int cluster_to_sector(unsigned int cluster) {
 void read_cluster(unsigned int cluster, unsigned char *buffer) {
     unsigned int sector = cluster_to_sector(cluster);
     unsigned int clusterSize = cluster_size();
-
     unsigned int offset = sector * bpb.BPB_BytsPerSec;
 
     fseek(fp, offset, SEEK_SET);
@@ -116,7 +115,8 @@ unsigned int get_parent_cluster() {
 // ========================= MAIN FUNCTIONS =========================
 // mount image
 int fat32_mount(const char *filename) {
-    if((fp = fopen(filename, "rb+")) == NULL) {
+    if ((fp = fopen(filename, "rb+")) == NULL) {
+        
         return -1;
     }
 
@@ -135,7 +135,7 @@ int fat32_mount(const char *filename) {
 
     // set current directory to root
     current_cluster = bpb.BPB_RootClus;
-
+    fat_start_off = bpb.BPB_RsvdSecCnt * bpb.BPB_BytsPerSec;
     return 0;
 }
 
@@ -174,7 +174,6 @@ void info() {
 
     // size of image (in bytes)
     printf("Size of image (bytes): %ld\n", image_size);
-
 }
 
 // calls ls function
@@ -219,14 +218,14 @@ void cd(char *name) {
         current_cluster = parent;
 
         int len = strlen(current_path);
-        if (len > 1 && current_path[len-1] == '/') {
-            current_path[len-1] = '\0';
+        if (len > 1 && current_path[len - 1] == '/') {
+            current_path[len - 1] = '\0';
             len--;
         }
 
         for (int i = len - 1; i >= 0; i--) {
             if (current_path[i] == '/') {
-                current_path[i+1] = '\0';
+                current_path[i + 1] = '\0';
                 break;
             }
         }
@@ -258,6 +257,143 @@ void cd(char *name) {
 }
 
 
+// REVISE ALL THIS
+unsigned int find_new_cluster() {
+    unsigned int bytes_per_fat = bpb.BPB_FATSz32 * bpb.BPB_BytsPerSec;
+    for (unsigned int i = 2; i < (bytes_per_fat / 4); i++) {
+        unsigned int offset = fat_start_off + (i*4);
+        unsigned int val;
+        fseek(fp, offset, SEEK_SET);
+        fread(&val, 4, 1, fp);
+
+        if ((val&0x0FFFFFFF) == 0) {
+            return i;
+        }
+
+    }
+    return 0;
+}
+
+void write_cluster(unsigned int cluster, unsigned int next) {
+    unsigned int off = fat_start_off + cluster * 4;
+    fseek(fp, off, SEEK_SET);
+    fwrite(&next, 4, 1, fp);
+    for (int i = 1; i < bpb.BPB_NumFATs; i++) {
+        unsigned int fat_base_off = fat_start_off + (i * bpb.BPB_FATSz32 * bpb.BPB_BytsPerSec);
+        unsigned int off = fat_base_off + (cluster * 4);
+        fseek(fp, off, SEEK_SET);
+        fwrite(&next, 4, 1, fp);
+    }
+}
+
+
+void mkdir(char * dirname) {
+    unsigned int size = cluster_size();
+    unsigned char *buffer = malloc(size);
+    if (buffer == NULL) {
+        printf("Error: could not allocate memory for ls.\n");
+        return;
+    }
+    read_cluster(current_cluster, buffer);
+    DIR_ENTRY *entries = (DIR_ENTRY *)buffer;
+
+    //create the short name
+    char short_dirname[11];
+    for (int i = 0; i < 11; i++) {
+        short_dirname[i] = ' ';
+    }
+    int i = 0;
+    // does this need length checking? maybe
+    while (dirname[i] != '\0') {
+        short_dirname[i] = toupper(dirname[i]);
+        i += 1;
+    }
+
+    int name_exists = 0;
+    int num = size / sizeof(DIR_ENTRY);
+    for (int i = 0; i < num; i++) {
+        if (entries[i].DIR_Name[0] == 0x00) {
+            break;
+        }
+        if (memcmp(short_dirname, entries[i].DIR_Name, 11) == 0) {
+            printf("error, filename already exists here");
+            name_exists = 1;
+            break;
+        }
+    }
+    if (name_exists == 1) {
+        // do nothing
+    }
+    else {
+        for (int i = 0; i < num; i++) {
+            if (entries[i].DIR_Name[0] == 0x00) {
+                DIR_ENTRY *entry = &entries[i];
+                memcpy(entry->DIR_Name, short_dirname, 11);
+                entry->DIR_Attr = 0x10;
+
+                unsigned int my_cluster = find_new_cluster();
+                write_cluster(my_cluster, 0X0FFFFFFF);
+
+
+                entry->DIR_FstClusHI = (unsigned short)(my_cluster >> 16);
+                entry->DIR_FstClusLO = (unsigned short)(my_cluster & 0xFFFF);
+                entry->DIR_FileSize  = 0;
+                unsigned int sector2 = cluster_to_sector(current_cluster);
+                unsigned int offset2 = sector2 * bpb.BPB_BytsPerSec;
+                fseek(fp, offset2, SEEK_SET);
+                fwrite(buffer, size, 1, fp);
+                free(buffer);
+
+                unsigned int size2 = cluster_size();
+                unsigned char *buffer2 = calloc(1, size2);
+                DIR_ENTRY *entries = (DIR_ENTRY *)buffer2;
+
+                char dot[11];
+                dot[0] = '.';
+                for (int i = 1; i < 11; i++) {
+                    dot[i] = ' ';
+                }
+
+                DIR_ENTRY *entry2 = &entries[0];
+                memcpy(entry2->DIR_Name, dot, 11);
+                entry2->DIR_Attr = 0x10;
+
+                entry2->DIR_FstClusHI = (unsigned short)(my_cluster >> 16);
+                entry2->DIR_FstClusLO = (unsigned short)(my_cluster & 0xFFFF);
+                entry2->DIR_FileSize  = 0;
+
+                char dot2[11];
+                dot2[0] = '.';
+                dot2[1] = '.';
+                for (int i = 2; i < 11; i++) {
+                    dot2[i] = ' ';
+                }
+
+                DIR_ENTRY *entry3 = &entries[1];
+                memcpy(entry3->DIR_Name, dot2, 11);
+                entry3->DIR_Attr = 0x10;
+
+                entry3->DIR_FstClusHI = (unsigned short)(current_cluster >> 16);
+                entry3->DIR_FstClusLO = (unsigned short)(current_cluster & 0xFFFF);
+                entry3->DIR_FileSize  = 0;
+
+                unsigned int sector3 = cluster_to_sector(my_cluster);
+                unsigned int offset3 = sector3 * bpb.BPB_BytsPerSec;
+                fseek(fp, offset3, SEEK_SET);
+                fwrite(buffer2, size2, 1, fp);
+                free(buffer2);
+
+
+                break;
+            }
+        }
+    }
+}
+
+
+
+
+
 void creat(char * filename) {
     unsigned int size = cluster_size();
     unsigned char *buffer = malloc(size);
@@ -277,16 +413,16 @@ void creat(char * filename) {
     // does this need length checking? maybe
     while (filename[i] != '\0') {
         short_filename[i] = toupper(filename[i]);
-        i+=1;
+        i += 1;
     }
 
     int file_exists = 0;
     int num = size / sizeof(DIR_ENTRY);
     for (int i = 0; i < num; i++) {
-        if (entries[i].DIR_Name[0] == 0x00) { 
-            break;    
+        if (entries[i].DIR_Name[0] == 0x00) {
+            break;
         }
-        if (memcmp(short_filename, entries[i].DIR_Name, 11) == 0) {  
+        if (memcmp(short_filename, entries[i].DIR_Name, 11) == 0) {
             printf("error, filename already exists here");
             file_exists = 1;
             break;
@@ -294,26 +430,27 @@ void creat(char * filename) {
     }
     if (file_exists == 1) {
         // do nothing
-    } 
+    }
     else {
         for (int i = 0; i < num; i++) {
-        if (entries[i].DIR_Name[0] == 0x00) { 
-            DIR_ENTRY *entry = &entries[i];
-            memcpy(entry->DIR_Name, short_filename, 11);
-            entry->DIR_Attr = DIR_ARCHIVE;
+            if (entries[i].DIR_Name[0] == 0x00) {
+                DIR_ENTRY *entry = &entries[i];
+                memcpy(entry->DIR_Name, short_filename, 11);
+                entry->DIR_Attr = 0x20;
 
-            entry->DIR_FstClusHI = 0;
-            entry->DIR_FstClusLO = 0;
-            entry->DIR_FileSize = 0;
+                entry->DIR_FstClusHI = 0;
+                entry->DIR_FstClusLO = 0;
+                entry->DIR_FileSize = 0;
 
-            unsigned int sector = cluster_to_sector(current_cluster);
-            unsigned int offset = sector * bpb.BPB_BytsPerSec;
-            fseek(fp, offset, SEEK_SET);
-            fwrite(buffer, size, 1, fp);
-            
+                unsigned int sector = cluster_to_sector(current_cluster);
+                unsigned int offset = sector * bpb.BPB_BytsPerSec;
+                fseek(fp, offset, SEEK_SET);
+                fwrite(buffer, size, 1, fp);
+                free(buffer);
 
-            break;
+  
+                break;
+            }
         }
-    }
     }
 }
