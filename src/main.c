@@ -64,6 +64,10 @@ int main(int argc, char *argv[]) {
             creat(arg1);
         }
 
+        else if (strcmp(cmd, "mkdir") == 0) {
+            mkdir(arg1);
+        }
+
         else {
             printf("Error: not a valid command\n");
         }
