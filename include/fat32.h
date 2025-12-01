@@ -54,6 +54,17 @@ typedef struct __attribute__((packed)) {
     unsigned int   DIR_FileSize;
 } DIR_ENTRY;
 
+// for opened files
+typedef struct {
+    int using;
+    char name[12];
+    unsigned int cluster;
+    unsigned int offset;
+    int mode;
+} OPEN_FILE;
+
+
+
 
 // helper functions
 const char* get_image_name();

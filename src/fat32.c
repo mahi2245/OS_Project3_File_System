@@ -9,10 +9,13 @@ static BPB bpb;
 static long image_size = 0;
 static unsigned int current_cluster = 0;
 static char current_path[256] = "/";
+OPEN_FILE open_files_table[10];
+
+
 
 static unsigned int fat_start_off = 0;
 
-// ========================= HELPER FUNCTIONS =========================
+// helpers
 const char* get_image_name() {
     return fp_name;
 }
@@ -112,7 +115,7 @@ unsigned int get_parent_cluster() {
 }
 
 
-// ========================= MAIN FUNCTIONS =========================
+// main funcs
 // mount image
 int fat32_mount(const char *filename) {
     if ((fp = fopen(filename, "rb+")) == NULL) {
@@ -120,12 +123,13 @@ int fat32_mount(const char *filename) {
         return -1;
     }
 
-    fp_name = strdup(filename);
-    if (!fp_name) {
-        fclose(fp);
-        fp = NULL;
-        return -1;
-    }
+fp_name = malloc(strlen(filename) + 1);
+if (!fp_name) {
+    fclose(fp);
+    fp = NULL;
+    return -1;
+}
+strcpy(fp_name, filename);
 
     // read BPB
     fseek(fp, 0, SEEK_END);
@@ -136,6 +140,13 @@ int fat32_mount(const char *filename) {
     // set current directory to root
     current_cluster = bpb.BPB_RootClus;
     fat_start_off = bpb.BPB_RsvdSecCnt * bpb.BPB_BytsPerSec;
+
+    
+    //initialize the table
+    for (int i = 0; i < 10; i++) {
+        open_files_table[i].using = 0;
+    }
+
     return 0;
 }
 
@@ -401,8 +412,7 @@ void creat(char * filename) {
         printf("Error: could not allocate memory for ls.\n");
         return;
     }
-    read_cluster(current_cluster, buffer);
-    DIR_ENTRY *entries = (DIR_ENTRY *)buffer;
+    
 
     //create the short name
     char short_filename[11];
@@ -415,7 +425,8 @@ void creat(char * filename) {
         short_filename[i] = toupper(filename[i]);
         i += 1;
     }
-
+    read_cluster(current_cluster, buffer);
+    DIR_ENTRY *entries = (DIR_ENTRY *)buffer;
     int file_exists = 0;
     int num = size / sizeof(DIR_ENTRY);
     for (int i = 0; i < num; i++) {
@@ -454,3 +465,159 @@ void creat(char * filename) {
         }
     }
 }
+
+void open(char *filename, char*flags) {
+    unsigned int size = cluster_size();
+    unsigned char* buffer = malloc(size);
+
+    char short_filename[11];
+    for (int i = 0; i < 11; i++) {
+        short_filename[i] = ' ';
+    }
+    int i = 0;
+    while (filename[i] != '\0') {
+        short_filename[i] = toupper(filename[i]);
+        i += 1;
+    }
+
+    read_cluster(current_cluster, buffer);
+    DIR_ENTRY *entries = (DIR_ENTRY *)buffer;
+    DIR_ENTRY *cur_entry = NULL;
+    int file_exists = 0;
+    int num = size / sizeof(DIR_ENTRY);
+    for (int i = 0; i < num; i++) {
+
+        if (memcmp(short_filename, entries[i].DIR_Name, 11) == 0) {
+            cur_entry = &entries[i];
+            file_exists = 1;
+            break;
+        }
+    }
+    if (file_exists == 1) {
+        for (int i = 0; i < 10; i++) {
+            if (memcmp(open_files_table[i].name, short_filename, 11) == 0 && open_files_table[i].using == 1) {
+                printf("Error, already open");
+                free(buffer);
+                return;
+            }
+        }
+        int i = 0;
+        while (i < 10) {
+            if (open_files_table[i].using == 0){
+                break;
+            }
+            i++;
+        }
+        if (i == 10) {
+            free(buffer);
+            return;
+        }
+        open_files_table[i].using = 1;
+        memcpy(open_files_table[i].name, short_filename, 11);
+        unsigned int hi = cur_entry->DIR_FstClusHI;
+        unsigned int lo = cur_entry->DIR_FstClusLO;
+        open_files_table[i].cluster = (hi << 16) | lo;
+        open_files_table[i].offset = 0;
+
+        if (strcmp(flags, "-r") == 0) {
+            open_files_table[i].mode = 0;
+        }
+        
+        else if (strcmp(flags, "-w") == 0) {
+            open_files_table[i].mode = 1;
+        }
+        
+        if (strcmp(flags, "-rw") == 0 || strcmp(flags, "-wr") == 0) {
+            open_files_table[i].mode = 2;
+        }
+        
+    }
+    free(buffer);
+    
+}
+
+void close(char * filename) {
+    char short_filename[11];
+    for (int i = 0; i < 11; i++) {
+        short_filename[i] = ' ';
+    }
+    int i = 0;
+    while (filename[i] != '\0') {
+        short_filename[i] = toupper(filename[i]);
+        i += 1;
+    }
+    for (int i = 0; i < 10; i++) {
+        if (memcmp(open_files_table[i].name, short_filename, 11) == 0 && open_files_table[i].using == 1) {
+            open_files_table[i].using = 0;
+            memset(open_files_table[i].name, 0, 12);
+            open_files_table[i].cluster = 0;
+            open_files_table[i].mode = 0;
+            open_files_table[i].offset = 0;
+            return;
+        }
+    }
+}
+
+void lsof() {
+    int i = 0;
+    while (i < 10) {
+        if (open_files_table[i].using == 1) {
+            printf("index: %d | ", open_files_table[i].using);
+            printf("name: %s | ", open_files_table[i].name);
+            printf("cluster: %d | ", open_files_table[i].cluster);
+            printf("mode: %d | ", open_files_table[i].mode);
+            printf("offset: %d |", open_files_table[i].offset);
+            printf("Path: %s\n", current_path);
+            
+        }
+        i++;
+    }
+}
+
+void lseek(char *filename, unsigned int offset) {
+    char short_filename[11];
+    for (int i = 0; i < 11; i++) {
+        short_filename[i] = ' ';
+    }
+    int i = 0;
+    while (filename[i] != '\0') {
+        short_filename[i] = toupper(filename[i]);
+        i += 1;
+    }
+
+
+    for (int i = 0; i < 10; i++) {
+        if (memcmp(open_files_table[i].name, short_filename, 11) == 0 && open_files_table[i].using == 1) {
+            open_files_table[i].offset = offset;
+            return;
+        }
+    }
+
+}
+
+// void read(char *filename, unsigned int size) {
+//     char short_filename[11];
+//     for (int i = 0; i < 11; i++) {
+//         short_filename[i] = ' ';
+//     }
+//     int i = 0;
+//     while (filename[i] != '\0') {
+//         short_filename[i] = toupper(filename[i]);
+//         i += 1;
+//     }
+//     i = 0;
+//     while (i < 10) {
+//         if (memcmp(open_files_table[i].name, short_filename, 11) == 0 && open_files_table[i].using == 1) {
+//             int my_offset = open_files_table[i].offset;
+//         }
+//         i++;
+//     }
+
+//     unsigned int cluster_siz = cluster_size();
+//     unsigned int first_cluster = open_files_table[i].cluster;
+//     unsigned int bytes_left = size-open_files_table[i].offset;
+//     unsigned int offset_in_clust = open_files_table[i].offset % cluster_siz;
+    
+    
+
+// }

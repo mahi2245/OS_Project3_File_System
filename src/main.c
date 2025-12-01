@@ -6,7 +6,7 @@
 #include "fat32.h"
 
 int main(int argc, char *argv[]) {
-
+    
     // print an error message if user does not mount image file
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <fat32 image>\n", argv[0]);
@@ -40,6 +40,7 @@ int main(int argc, char *argv[]) {
 
         char *cmd = tokens->items[0];
         char *arg1 = tokens->items[1];
+        char *arg2 = tokens->items[2];
 
         // implement commands
         if (strcmp(cmd, "exit") == 0) {
@@ -67,6 +68,19 @@ int main(int argc, char *argv[]) {
         else if (strcmp(cmd, "mkdir") == 0) {
             mkdir(arg1);
         }
+        else if (strcmp(cmd, "open") == 0){
+            open(arg1, arg2);
+        }
+        else if (strcmp(cmd, "close") == 0) {
+            close(arg1);
+        }
+        else if (strcmp(cmd, "lsof") == 0) {
+            lsof();
+        }
+        else if(strcmp(cmd, "lseek") == 0) {
+            lseek(arg1, arg2);
+        }
+
 
         else {
             printf("Error: not a valid command\n");
