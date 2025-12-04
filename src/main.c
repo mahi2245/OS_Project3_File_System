@@ -89,6 +89,10 @@ int main(int argc, char *argv[]) {
             }
         }
 
+        else if (strcmp(cmd, "read") == 0) {
+            read(arg1, arg2);
+        }
+
         else if (strcmp(cmd, "write") == 0) {
             if (!arg1) {
                 printf("Error: write requires [FILENAME] [STRING].\n");

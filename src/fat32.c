@@ -1159,3 +1159,74 @@ void rmdir_cmd(char *dirname) {
 
     free(buffer);
 }
+
+void read(char *filename, unsigned int size) {
+    char short_filename[11];
+    for (int i = 0; i < 11; i++) {
+        short_filename[i] = ' ';
+    }
+    int i = 0;
+    while (filename[i] != '\0') {
+        short_filename[i] = toupper(filename[i]);
+        i += 1;
+    }
+    i = 0;
+    while (i < 10) {
+        if (memcmp(open_files_table[i].name, short_filename, 11) == 0 && open_files_table[i].using == 1) {
+            break;
+        }
+        i++;
+    }
+    if (i == 10) {
+        return;
+    }
+    unsigned int cluster_siz = cluster_size();
+    unsigned int first_cluster = open_files_table[i].cluster;
+    unsigned int offset_in_clust = open_files_table[i].offset % cluster_siz;
+    
+    unsigned int actual_offset = open_files_table[i].offset;
+    unsigned int total_bytes = size;
+    unsigned int cluster_index = actual_offset/ cluster_siz;
+
+    unsigned int cur_clust = first_cluster;
+    
+    for (unsigned int ii = 0; ii < cluster_index; ii++) {
+        unsigned int n = fat_get(cur_clust);
+        if (n == 0 || n == 0x0FFFFFFF) {
+            return;
+        }
+        cur_clust = n;
+    }
+
+    unsigned char *buffer = malloc(cluster_siz);
+    while (total_bytes > 0) {
+        read_cluster(cur_clust, buffer);
+
+        unsigned int space = cluster_siz - offset_in_clust;
+        unsigned int bytes = 0;
+        if (total_bytes < space) {
+            bytes = total_bytes;
+        }
+        else {
+            bytes = space;
+        }
+        for (unsigned int j = 0; j < bytes; j++) {
+            putchar(buffer[offset_in_clust + j]);
+        }
+        total_bytes -= bytes;
+        actual_offset += bytes;
+
+        offset_in_clust = 0;
+
+        if (total_bytes > 0) {
+            unsigned int n = fat_get(cur_clust);
+                if (n == 0x0FFFFFFF) {
+                    break;
+                }
+                cur_clust = n;
+            }
+        }
+    free(buffer);
+    open_files_table[i].offset = actual_offset;
+    return;
+}
