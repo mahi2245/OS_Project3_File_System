@@ -57,14 +57,12 @@ typedef struct __attribute__((packed)) {
 // for opened files
 typedef struct {
     int using;
-    char name[12];
-    unsigned int cluster;
-    unsigned int offset;
-    int mode;
+    char name[12];         
+    unsigned int cluster;   
+    unsigned int offset;    
+    int mode;               
+    char path[256];         
 } OPEN_FILE;
-
-
-
 
 // helper functions
 const char* get_image_name();
@@ -77,12 +75,26 @@ int is_valid_entry(DIR_ENTRY *entry);
 DIR_ENTRY* find_entry(const char *target);
 unsigned int get_parent_cluster();
 
+// main filesystem interface
 int fat32_mount(const char *filename);
 void fat32_unmount();
 void info();
 void ls();
 void cd(char *name);
 void creat(char * filename);
+void mkdir(char * dirname);
 
+void open(char *filename, char *flags);
+void close(char *filename);
+void lsof(void);
+void lseek(char *filename, unsigned int offset);
+
+// Part 5 (Update)
+void write_cmd(char *filename, const char *string);
+void mv_cmd(char *src, char *dst);
+
+// Part 6 (Delete)
+void rm_cmd(char *filename);
+void rmdir_cmd(char *dirname);
 
 #endif
